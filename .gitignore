@@ -16,6 +16,9 @@ target/
 .DS_Store
 .env
 .env.local
+.env.*
+.dev.vars*
+*.dump
 __pycache__/
 *.pyc
 .ruff_cache/
