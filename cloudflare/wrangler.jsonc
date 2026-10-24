@@ -1,0 +1,52 @@
+// GeoLibre GIS (gis.titanoshq.com) on Cloudflare Containers.
+// Workers Builds deploys this Worker from jsheck-max/GeoLibre, root directory
+// `cloudflare`, on push of feat/cloudflare-containers. It builds the repo's own
+// root Dockerfile - see ../CLOUDFLARE.md.
+// Secret, set with `wrangler secret put` only (never in this file):
+//   GEOLIBRE_AUTH_PASSWORD
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gis",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  // Only the public hostname answers: no workers.dev, no preview URLs, no test route.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "gis.titanoshq.com", "custom_domain": true }],
+  "containers": [
+    {
+      "class_name": "GisContainer",
+      // Resolved from this file's directory: the repo-root Dockerfile, with the
+      // repo root as build context.
+      "image": "../Dockerfile",
+      // Build args (Dockerfile ARG). Share-off is baked into the bundle as well
+      // as set at runtime below: the service worker precaches
+      // geolibre-runtime-config.js, so a browser can keep serving an older copy
+      // of it, and the app then falls back to this build value instead of the
+      // public share.geolibre.app. Changing the bundle also makes old service
+      // workers update.
+      "image_vars": { "VITE_GEOLIBRE_SHARE_URL": "off" },
+      // basic = 1/4 vCPU, 1 GiB, 4 GB disk. Most GeoLibre analysis runs in the
+      // browser; the sidecar is idle unless called. Move to standard-1 on OOM.
+      "instance_type": "basic",
+      "max_instances": 1,
+      "constraints": { "regions": ["ENAM"] }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "GIS", "class_name": "GisContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GisContainer"] }],
+  // The Worker version id names the deploy for settle-on-deploy (cloudflare/fresh.ts).
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // No cron: the app has no in-process timers, and its two users accept a cold
+  // start after 15 idle minutes.
+  "vars": {
+    // Basic-auth user (nginx in the image); the password is the secret above.
+    "GEOLIBRE_AUTH_USER": "tnts",
+    // Removes Share and the Project Gallery, so TNTS data cannot be uploaded to
+    // the public share.geolibre.app (unset = that public service).
+    "GEOLIBRE_SHARE_URL": "off"
+  }
+}

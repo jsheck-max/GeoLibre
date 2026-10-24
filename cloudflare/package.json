@@ -1,0 +1,21 @@
+{
+  "name": "gis-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker + Container front door for the TNTS GeoLibre deploy (gis.titanoshq.com). Not part of the GeoLibre workspaces.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test edge.test.ts fresh.test.ts",
+    "types": "wrangler types worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "wrangler deploy --dry-run --containers-rollout=none --outdir .wrangler/dry-run"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "0.3.7",
+    "typescript": "5.9.3",
+    "wrangler": "4.152.0"
+  }
+}
