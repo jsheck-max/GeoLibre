@@ -25,9 +25,9 @@ What the Worker does on every request (`cloudflare/edge.ts`, tested in `cloudfla
 1. Redirects `http://` to `https://` with a 301, because Basic auth over plain http sends the password in cleartext.
 2. Answers `401` with `www-authenticate: Basic realm="GeoLibre"` (nginx's realm) to any request without `Authorization: Basic …`, except `/healthz`. nginx would refuse such a request anyway, so this only keeps scanners from waking the container, keeping it awake, or seeing its start-up errors. Any Basic credentials pass on, and nginx checks them. Browsers send the saved login with every request after the first prompt, so users see no change.
 3. Deletes client-sent `x-real-ip`, `x-forwarded-for`, `x-forwarded-host`, `x-forwarded-proto`, `forwarded`, `true-client-ip` and every `cf-*` header, then sets `x-real-ip` and `x-forwarded-for` to `cf-connecting-ip`. That includes `cf-container-target-port`, which `@cloudflare/containers` would otherwise use to pick the container port.
-4. Removes every cookie whose name starts with `titan_` from `Cookie`. TITAN sets `titan_session` on `Domain=.titanoshq.com`, so browsers send it here too, and it must never reach third-party code. Other cookies pass through. The header is dropped if nothing is left.
+4. Strips the parent site's first-party session cookies (the name prefix is in `cloudflare/edge.ts`) from `Cookie`, so they never reach third-party code. Other cookies pass through. The header is dropped if nothing is left.
 5. Keeps the public URL, so the container sees `Host: gis.titanoshq.com`.
-6. On the way back, adds `strict-transport-security: max-age=31536000` and deletes any `Set-Cookie`. GeoLibre sets no cookies, and one from this host could name `Domain=.titanoshq.com` and land in TITAN.
+6. On the way back, adds `strict-transport-security: max-age=31536000` and deletes any `Set-Cookie`. GeoLibre sets no cookies, and one from this host could be scoped to the parent domain and reach the parent site.
 
 There is **no edge cache**, unlike THOR. The password is checked in the container, so any file served from the edge cache would skip the password.
 
@@ -94,15 +94,6 @@ npm run typecheck   # tsc against worker-configuration.d.ts (regenerate: npm run
 npm run check       # wrangler deploy --dry-run --containers-rollout=none (validates config, bundles; deploys nothing)
 ```
 
-## Open issues
+## Operator notes
 
-- **The image has not been built on Cloudflare yet.** There was no Docker on the machine where this was prepared, so `npm run check` skips the container build. The first Workers Builds run is the first real build.
-- **Cookie tossing, browser half:** the Worker drops `Set-Cookie` from the container, but JavaScript served from `gis.titanoshq.com` can still set a `.titanoshq.com` cookie with `document.cookie`, so a compromised GeoLibre build could plant a `titan_*` cookie for TITAN. Stripping `titan_*` from requests only stops TITAN's session reaching the container. The full fix is a hostname outside the `titanoshq.com` zone.
-- **HSTS has no `includeSubDomains`**, because not every subdomain of the zone has been checked as https-only. Zone-wide HSTS is a separate decision.
-- **A replace that keeps failing keeps GIS at 503** (settle-on-deploy fails closed). Watch for `gis.settle.replace_failed` in the Worker logs. A new deploy starts a fresh object and tries again.
-- **CSP allows `http://localhost:*` / `http://127.0.0.1:*`** (and `ws://`) in `connect-src` (`docker/nginx.conf`). Upstream warns this lets served JS probe each visitor's loopback on a public host. The site sits behind Basic auth. Changing it is a separate decision.
-- **Request bodies through Cloudflare are capped by the zone plan** (100 MB on Free/Pro). GeoLibre has no upload endpoint, so only a very large JSON body to the sidecar could hit the cap.
-- **No rate limit on password guesses.** The Worker cuts off requests with no credentials, but a request with wrong Basic credentials still reaches nginx. The control is the password's length: 24 or more random characters cannot be guessed online. A Cloudflare WAF rate-limit rule on 401s from `gis.titanoshq.com` is an optional extra.
-- `basic` has 1 GiB of memory. A large sidecar conversion could run out of memory. If it does, change `instance_type` to `standard-1`.
-- The fork is far behind upstream (0 ahead, about 923 behind on 2026-10-23). Syncing is a separate decision; do not sync during a cutover, so only one thing changes at a time.
-- `npm audit` in `cloudflare/` reports undici advisories in wrangler's local dev server (miniflare). That code is tooling only; it never ships in the Worker.
+Deployment notes for the operator are kept privately.

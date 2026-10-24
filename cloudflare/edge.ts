@@ -1,7 +1,7 @@
 // Request shaping for the GIS Worker (cloudflare/worker.ts). Kept free of
 // cloudflare:workers imports so `node --test` can load it.
 //
-// No edge cache here, unlike THOR's edge.ts: GeoLibre's only access control is
+// No edge cache here: GeoLibre's only access control is
 // nginx Basic auth INSIDE the container, so a static file served from the edge
 // cache would skip the password. Every request goes to the container.
 
@@ -17,10 +17,11 @@ export function httpsRedirect(request: Request): Response | null {
 }
 
 /**
- * TITAN sets titan_session on Domain=.titanoshq.com, so browsers send it to
- * gis.titanoshq.com too. It must never reach third-party code in the container.
- * Splits on "," as well as ";" so a header merged from two Cookie lines cannot
- * hide one; only cookies whose name starts titan_ are removed.
+ * Strips the parent site's first-party session cookies. Browsers send cookies
+ * scoped to the parent domain to this host too, and they must never reach
+ * third-party code in the container. Splits on "," as well as ";" so a header
+ * merged from two Cookie lines cannot hide one; only cookies whose name starts
+ * with the prefix below are removed.
  */
 export function withoutTitanCookies(cookie: string | null): string | null {
   const kept = (cookie ?? "")
@@ -86,7 +87,8 @@ export function needsLogin(request: Request): Response | null {
  * Every https response the Worker returns. HSTS keeps the browser off plain
  * http after one visit, where a fake Basic prompt could collect the password
  * before the 301 ever ran. Set-Cookie is dropped: GeoLibre sets no cookies, and
- * one from gis.titanoshq.com could name Domain=.titanoshq.com and land in TITAN.
+ * one from this host could be scoped to the parent domain and reach the parent
+ * site.
  */
 export function hardened(response: Response): Response {
   // A WebSocket upgrade cannot be copied; nginx proxies none today.
